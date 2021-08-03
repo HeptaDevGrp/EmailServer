@@ -5,15 +5,17 @@ This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 
 ## Permitted Server
 
-| Owner                  | Hepta Workshop |
-| ---------------------- | -------------- |
-| Holder/Network Decider | Jiahe LI       |
-| IP Public              | FORBIDDEN      |
-| IP Private             | 10.0.4.17      |
-| Password               | FORBIDDEN      |
-| Version                | CentOS 7.6     |
-| E-mail Monopolize      | YES            |
-| Domain Name            | `hepta.asia`   |
+| Owner                           | Hepta Workshop     |
+| ------------------------------- | ------------------ |
+| Holder/Network Decider          | Jiahe LI           |
+| IP Public                       | PRIVATE            |
+| IP Private                      | 10.0.4.17          |
+| Password                        | PRIVATE            |
+| Version                         | CentOS 7.6         |
+| E-mail Monopolize               | YES                |
+| Domain Name                     | `hepta.asia`       |
+| SSL Certification & Key Address | `/root/.cert_key/` |
+|                                 |                    |
 
 
 
@@ -53,25 +55,8 @@ INSERT INTO `mail_sys`.`users`
 -> ('1', '1', ENCRYPT('12345678', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'ceo@example.com'),
 -> ('2', '1', ENCRYPT('password', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'hr@example.com'),
 -> ('3', '1', ENCRYPT('11111111', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'lyon@example.com');
-# INSERT INTO `mail_sys`.`aliases`
-# -> (`id`, `domain_id`, `source`, `destination`) VALUES
-# -> ('1', '1', 'user11@example.com', 'user1@example.com'),
-# -> ('2', '1', 'user22@example.com', 'user2@example.com'),
-# -> ('3', '1', 'user33@example.com', 'user3@example.com');
 SELECT * FROM mail_sys.domains;
-# +----+-------------+
-# | id | name        |
-# +----+-------------+
-# |  1 | example.com |
-# +----+-------------+
 SELECT * FROM mail_sys.users;
-# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
-# | id | domain_id | password                                                                                                   # | email             |
-# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
-# |  1 |         1 | $6$afbdd821f68a3f27$QH9yDKslGZMNZjzvBBvMtYXzzclbnNgb1AhmB7lqu6fj6PU04QTgCTvcvPwqsAaW6mJt9kcKPicN0VCQGalg5/ | user1@example.com |
-# |  2 |         1 | $6$a4f819161bd19901$oeDntXEyiY6RiM369ugKZrMfsK6yeV3CG/fhFF4ruPJImLCyzi2hR/PX8f2nBDBRWiMvWv7zWiNv5yEruRsW// | user2@example.com |
-# |  3 |         1 | $6$2a85aaab0ec76f64$KRQ2H8Zgn0YjTzDDnfwqim3mZynZ05iPMZ1GQPw7GNuJApcXuLi5LOmR9yDC6Jh2eAKbhuG4lgHG.I5FdIrf4. | user3@example.com |
-# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
 ```
 
 ### 3. User Group Setup
@@ -385,9 +370,15 @@ systemctl enable postfix dovecot opendkim mariadb # start when booting
 
 ### 8. Records Setup
 
-![image-20210803123100688](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043101.png)
-
-![image-20210803123123489](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043123.png)
+| Record Type | Record HostName | Record Value                                                 |
+| ----------- | --------------- | ------------------------------------------------------------ |
+| A           | @               | 1.1.1.1                                                      |
+| MX          | @               | mail.hepta.asia                                              |
+| A           | mail            | 1.1.1.1                                                      |
+| TXT         | @               | v=spf1 mx -all                                               |
+| TXT         | _dmarc          | v=DMARC1; p=reject                                           |
+| TXT         | mail._domainkey | v=DKIM1; k=rsa; <br/>p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBG8b8e8+K5VPYDMbMiwXjZTFWIUWn1/pUD09Qc3FxtmCqBXqCD9833cWz1yeI1IHX9zvAIIE38o9TjvUn2kk/GMypn4NKo/EiF5hsLYPpj24OvR1u87ILgSco0WKe43UNWeoKlW9kmSQBFE49nFsJlZ3Kw0PFkBRSvQzc5HKwDQIDAQAB |
+|             |                 |                                                              |
 
 ![image-20210803123133095](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043133.png)
 
@@ -450,9 +441,15 @@ FLUSH PRIVILEGES;
 ### 12. Services Start (NGINX, PHP)
 
 ```shell
-# start the services
+# start the services (except MariaDB)
 systemctl enable nginx php-fpm
-systemctl start nginx
-systemctl start php-fpm
+systemctl start nginx php-fpm
+```
+
+### 13. Restart All Services
+
+```shell
+nginx -s reload
+systemctl restart postfix dovecot opendkim nginx php-fpm
 ```
 
