@@ -11,6 +11,9 @@ This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 | Password               | FORBIDDEN      |
 | Version                | CentOS 7.6     |
 | E-mail Monopolize      | YES            |
+| Domain Name            | `hepta.asia`   |
+
+
 
 ## Shell Script for Manipulation
 
@@ -21,10 +24,440 @@ yum -y install epel-release && \
 yum -y update && \
 yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-mbstring php-mysql php-xml postfix pypolicyd-spf tar wget # always enter 'y' to pass the queries
 
-# configure MariaDB(MySQL-kind)
+# configure MariaDB(MySQL-kind). This database only verifies the domain, user, and alias
 systemctl start mariadb
-mysql_secure_installation # you can set passwd for root, and you can also ignore it.
+mysql_secure_installation # you can set passwd for root, and you can also ignore it. For later questions, use all 'y's to pass the queries.
 
+# set-up MariaDB
+mysql -u root -p # log in MariaDB using user root
+CREATE USER 'mail_sys'@'localhost' IDENTIFIED BY 'mail_sys';
+CREATE DATABASE mail_sys;
+GRANT SELECT ON mail_sys.* TO 'mail_sys'@'localhost' IDENTIFIED BY 'mail_sys'; # grant arthority
+FLUSH PRIVILEGES;
+USE mail_sys;
+CREATE TABLE `domains` ( `id` int(20) NOT NULL auto_increment, `name` varchar(100) NOT NULL, PRIMARY KEY (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+REFERENCES domains(id) ON DELETE CASCADE ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+# REFERENCES domains(id) ON DELETE CASCADE ) ENGINE=InnoDB DEFAULT CHARSET=utf8; # for alias
+INSERT INTO `mail_sys`.`domains` (`id` ,`name`) 
+-> VALUES ('1', 'hepta.asia');
+INSERT INTO `mail_sys`.`users`
+-> (`id`, `domain_id`, `password` , `email`) VALUES
+-> ('1', '1', ENCRYPT('12345678', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'ceo@example.com'),
+-> ('2', '1', ENCRYPT('password', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'hr@example.com'),
+-> ('3', '1', ENCRYPT('11111111', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'lyon@example.com');
+# INSERT INTO `mail_sys`.`aliases`
+# -> (`id`, `domain_id`, `source`, `destination`) VALUES
+# -> ('1', '1', 'user11@example.com', 'user1@example.com'),
+# -> ('2', '1', 'user22@example.com', 'user2@example.com'),
+# -> ('3', '1', 'user33@example.com', 'user3@example.com');
+SELECT * FROM mail_sys.domains;
+# +----+-------------+
+# | id | name        |
+# +----+-------------+
+# |  1 | example.com |
+# +----+-------------+
+SELECT * FROM mail_sys.users;
+# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
+# | id | domain_id | password                                                                                                   # | email             |
+# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
+# |  1 |         1 | $6$afbdd821f68a3f27$QH9yDKslGZMNZjzvBBvMtYXzzclbnNgb1AhmB7lqu6fj6PU04QTgCTvcvPwqsAaW6mJt9kcKPicN0VCQGalg5/ | user1@example.com |
+# |  2 |         1 | $6$a4f819161bd19901$oeDntXEyiY6RiM369ugKZrMfsK6yeV3CG/fhFF4ruPJImLCyzi2hR/PX8f2nBDBRWiMvWv7zWiNv5yEruRsW// | user2@example.com |
+# |  3 |         1 | $6$2a85aaab0ec76f64$KRQ2H8Zgn0YjTzDDnfwqim3mZynZ05iPMZ1GQPw7GNuJApcXuLi5LOmR9yDC6Jh2eAKbhuG4lgHG.I5FdIrf4. | user3@example.com |
+# +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
+
+# add user group
+groupadd -g 2000 mail_sys
+useradd -g mail_sys -u 2000 mail_sys -d /var/spool/mail -s /sbin/nologin
+chown -R mail_sys:mail_sys /var/spool/mail
+
+# postfix part
+cp -r /etc/postfix /etc/postfix.bak
+cat > /etc/postfix/main.cf << EOF
+```
+
+```json
+mydomain = hepta.asia
+myhostname = mail.hepta.asia
+mydestination = localhost
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
+myorigin = /etc/mailname
+mynetworks = 127.0.0.0/8
+mailbox_size_limit = 0
+recipient_delimiter = +
+inet_protocols = all
+inet_interfaces = all
+smtp_address_preference = ipv4
+smtpd_banner = ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+virtual_mailbox_domains = mysql:/etc/postfix/mysql_mailbox_domains.cf
+virtual_mailbox_maps = mysql:/etc/postfix/mysql_mailbox_maps.cf
+virtual_alias_maps = mysql:/etc/postfix/mysql_alias_maps.cf
+smtpd_sender_login_maps = mysql:/etc/postfix/mysql_mailbox_maps.cf, mysql:/etc/postfix/mysql_alias_maps.cf
+disable_vrfy_command = yes
+strict_rfc821_envelopes = yes
+smtpd_sender_restrictions = reject_non_fqdn_sender, reject_unknown_sender_domain, reject_sender_login_mismatch
+smtpd_recipient_restrictions = reject_non_fqdn_recipient, reject_unknown_recipient_domain, permit_sasl_authenticated, reject_unauth_destination, check_policy_service unix:private/policyd-spf
+virtual_uid_maps = static:2000
+virtual_gid_maps = static:2000
+message_size_limit = 102400000
+smtpd_tls_security_level = may
+smtp_tls_security_level = may
+smtpd_tls_cert_file=/root/.cert_key/cert.pem
+smtpd_tls_key_file=/root/.cert_key/key.pem
+smtpd_tls_session_cache_database = btree:\${data_directory}/smtpd_scache
+smtp_tls_session_cache_database = btree:\${data_directory}/smtp_scache
+smtpd_tls_protocols = TLSv1.2, TLSv1.1, !TLSv1, !SSLv2, !SSLv3
+smtp_tls_protocols = TLSv1.2, TLSv1.1, !TLSv1, !SSLv2, !SSLv3
+smtp_tls_ciphers = high
+smtpd_tls_ciphers = high
+smtpd_tls_mandatory_protocols = TLSv1.2, TLSv1.1, !TLSv1, !SSLv2, !SSLv3
+smtp_tls_mandatory_protocols = TLSv1.2, TLSv1.1, !TLSv1, !SSLv2, !SSLv3
+smtp_tls_mandatory_ciphers = high
+smtpd_tls_mandatory_ciphers = high
+smtpd_tls_mandatory_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, aNULL
+smtpd_tls_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, aNULL
+smtp_tls_mandatory_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, aNULL
+smtp_tls_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, aNULL
+tls_preempt_cipherlist = yes
+smtpd_tls_received_header = yes
+policyd-spf_time_limit = 3600
+EOF
+```
+
+```shell
+cat > /etc/postfix/master.cf << EOF
+```
+
+```json
+smtp      inet  n       -       n       -       -       smtpd
+submission inet n       -       n       -       -       smtpd
+       -o smtpd_tls_security_level=encrypt
+smtps     inet  n       -       n       -       -       smtpd
+       -o smtpd_tls_wrappermode=yes
+pickup    unix  n       -       n       60      1       pickup
+cleanup   unix  n       -       n       -       0       cleanup
+qmgr      unix  n       -       n       300     1       qmgr
+tlsmgr    unix  -       -       n       1000?   1       tlsmgr
+rewrite   unix  -       -       n       -       -       trivial-rewrite
+bounce    unix  -       -       n       -       0       bounce
+defer     unix  -       -       n       -       0       bounce
+trace     unix  -       -       n       -       0       bounce
+verify    unix  -       -       n       -       1       verify
+flush     unix  n       -       n       1000?   0       flush
+proxymap  unix  -       -       n       -       -       proxymap
+proxywrite unix -       -       n       -       1       proxymap
+smtp      unix  -       -       n       -       -       smtp
+relay     unix  -       -       n       -       -       smtp
+       -o smtp_helo_timeout=120 -o smtp_connect_timeout=120
+showq     unix  n       -       n       -       -       showq
+error     unix  -       -       n       -       -       error
+retry     unix  -       -       n       -       -       error
+discard   unix  -       -       n       -       -       discard
+local     unix  -       n       n       -       -       local
+virtual   unix  -       n       n       -       -       virtual
+lmtp      unix  -       -       n       -       -       lmtp
+anvil     unix  -       -       n       -       1       anvil
+scache    unix  -       -       n       -       1       scache
+policyd-spf    unix  -       n       n       -       0       spawn
+       user=mail_sys argv=/usr/libexec/postfix/policyd-spf
+EOF
+```
+
+```shell
+cat > /etc/postfix/mysql_mailbox_domains.cf << EOF
+```
+
+```json
+user = mail_sys
+password = mail_sys
+hosts = localhost
+dbname = mail_sys
+query = SELECT 1 FROM domains WHERE name='%s'
+EOF
+```
+
+```shell
+cat > /etc/postfix/mysql_mailbox_maps.cf << EOF
+```
+
+```json
+user = mail_sys
+password = mail_sys
+hosts = localhost
+dbname = mail_sys
+query = SELECT email FROM users WHERE email='%s'
+EOF
+```
+
+```shell
+# postfix setup
+systemctl start postfix
+postmap -q hepta.asia mysql:/etc/postfix/mysql_mailbox_domains.cf # should return 1
+postmap -q ceo@hepta.asia mysql:/etc/postfix/mysql_alias_maps.cf # should return ceo@hepta.asia
+systemctl stop postfix # temporarily shut down
+
+# dovecot setup
+cp -r /etc/dovecot /etc/dovecot.bak
+cat > /etc/dovecot/dovecot.conf << EOF
+```
+
+```json
+protocols = imap lmtp
+dict {
+}
+!include conf.d/*.conf
+!include_try local.conf
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/10-mail.conf << EOF
+```
+
+```json
+namespace inbox {
+  inbox = yes
+}
+first_valid_uid = 1000
+mbox_write_locks = fcntl
+mail_location = maildir:/var/spool/mail/%d/%n
+mail_privileged_group = mail
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/15-mailboxes.conf << EOF
+```
+
+```json
+namespace inbox {
+  mailbox Drafts {
+    auto = create
+    special_use = \Drafts
+  }
+  mailbox Trash {
+    auto = create
+    special_use = \Trash
+  }
+  mailbox Sent {
+    auto = create
+    special_use = \Sent
+  }
+}
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/10-auth.conf << EOF
+```
+
+```json
+auth_mechanisms = plain login
+!include auth-sql.conf.ext
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/auth-sql.conf.ext << EOF
+```
+
+```json
+passdb {
+  driver = sql
+  args = /etc/dovecot/dovecot-sql.conf.ext
+}
+userdb {
+  driver = static
+  args = uid=mail_sys gid=mail_sys home=/var/spool/mail/%d/%n
+}
+EOF
+```
+
+```shell
+cat > /etc/dovecot/dovecot-sql.conf.ext << EOF
+```
+
+```json
+driver = mysql
+connect = host=localhost dbname=mail_sys user=mail_sys password=mail_sys
+default_pass_scheme = SHA512-CRYPT
+password_query = SELECT email as user, password FROM users WHERE email='%u';
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/10-ssl.conf << EOF
+```
+
+```json
+ssl = required
+ssl_cert = </root/.cert_key/cert.pem
+ssl_key = </root/.cert_key/key.pem
+ssl_protocols = TLSv1.2 TLSv1.1 !TLSv1 !SSLv2 !SSLv3
+ssl_cipher_list = ALL:!MD5:!DES:!ADH:!RC4:!PSD:!SRP:!3DES:!eNULL:!aNULL
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/10-master.conf << EOF
+```
+
+```json
+service imap-login {
+  inet_listener imap {
+    port = 143
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+
+service lmtp {
+    unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+
+service imap {
+
+}
+
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+    user = postfix
+    group = postfix
+  }
+
+  unix_listener auth-userdb {
+    mode = 0600
+    user = mail_sys
+  }
+  user = dovecot
+}
+
+service auth-worker {
+  user = mail_sys
+}
+EOF
+```
+
+```shell
+cat > /etc/dovecot/conf.d/15-lda.conf << EOF
+```
+
+```json
+postmaster_address = postmaster@%d
+
+protocol lda {
+}
+EOF
+```
+
+```shell
+cat > /etc/opendkim.conf << EOF
+```
+
+```json
+Syslog yes
+UMask 002
+OversignHeaders From
+Socket inet:8891@127.0.0.1
+Domain hepta.asia
+KeyFile /etc/opendkim/keys/mail.private
+Selector mail
+RequireSafeKeys no
+EOF
+```
+
+```shell
+# openKDIM setup
+opendkim-genkey -D /etc/opendkim/keys/ -d hepta.asia -s mail && \
+chown -R opendkim:opendkim /etc/opendkim/keys/
+cat >> /etc/postfix/main.cf << EOF
+```
+
+```json
+milter_protocol = 2
+milter_default_action = accept
+smtpd_milters = inet:127.0.0.1:8891
+non_smtpd_milters = inet:127.0.0.1:8891
+EOF
+```
+
+```shell
+systemctl start postfix dovecot opendkim
+systemctl enable postfix dovecot opendkim mariadb # start when booting
+```
+
+### Point 10 is left
+
+```shell
+/
+```
+
+### Point 11
+
+```shell
+wget https://github.com/roundcube/roundcubemail/releases/download/1.3.0/roundcubemail-1.3.0-complete.tar.gz
+tar -xf roundcubemail-1.3.0-complete.tar.gz && \
+mv roundcubemail-1.3.0 /usr/share/roundcube && \
+chown -R apache:apache /usr/share/roundcube
+vi /etc/nginx/conf.d/mail.conf
+
+server {
+    listen       80;
+    server_name  mail.hepta.asia;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen       443 ssl http2;
+    server_name  mail.hepta.asia;
+    ssl_certificate "/root/.cert_key/cert.pem";
+    ssl_certificate_key "/root/.cert_key/key.pem";
+    add_header Strict-Transport-Security "max-age=15552000; includeSubDomains";
+    location / {
+     root         /usr/share/roundcube;
+     index        index.php;     
+    }   
+    location ~ .php$ {
+        root         /usr/share/roundcube;
+        fastcgi_pass   127.0.0.1:9000;
+        fastcgi_index  index.php;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+        include        fastcgi_params;
+    }
+}
+# :x
+
+echo "date.timezone = Asia/Shanghai" >> /etc/php.ini 
+mkdir /var/lib/php/session && \
+chown apache:apache /var/lib/php/session
+
+# database operations
+mysql -u root -p
+CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
+CREATE DATABASE roundcube;
+GRANT ALL ON roundcube.* TO 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
+FLUSH PRIVILEGES;
+# ctrl + D
+
+# start the services
+systemctl enable nginx php-fpm 
+systemctl start nginx 
+systemctl start php-fpm
 
 ```
 
+### Config RoundCube (no command-lines any more!)
