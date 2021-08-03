@@ -1,6 +1,8 @@
 # Email Server Version 0.1.0
 This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 
+[TOC]
+
 ## Permitted Server
 
 | Owner                  | Hepta Workshop |
@@ -17,13 +19,19 @@ This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 
 ## Shell Script for Manipulation
 
+### 1. System Update & Download All Packages
+
 ```shell
 # system update
 yum -y update && \
 yum -y install epel-release && \
 yum -y update && \
 yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-mbstring php-mysql php-xml postfix pypolicyd-spf tar wget # always enter 'y' to pass the queries
+```
 
+### 2. Back-end Database System Setup
+
+```shell
 # configure MariaDB(MySQL-kind). This database only verifies the domain, user, and alias
 systemctl start mariadb
 mysql_secure_installation # you can set passwd for root, and you can also ignore it. For later questions, use all 'y's to pass the queries.
@@ -64,18 +72,25 @@ SELECT * FROM mail_sys.users;
 # |  2 |         1 | $6$a4f819161bd19901$oeDntXEyiY6RiM369ugKZrMfsK6yeV3CG/fhFF4ruPJImLCyzi2hR/PX8f2nBDBRWiMvWv7zWiNv5yEruRsW// | user2@example.com |
 # |  3 |         1 | $6$2a85aaab0ec76f64$KRQ2H8Zgn0YjTzDDnfwqim3mZynZ05iPMZ1GQPw7GNuJApcXuLi5LOmR9yDC6Jh2eAKbhuG4lgHG.I5FdIrf4. | user3@example.com |
 # +----+-----------+------------------------------------------------------------------------------------------------------------+-------------------+
+```
 
+### 3. User Group Setup
+
+```shell
 # add user group
 groupadd -g 2000 mail_sys
 useradd -g mail_sys -u 2000 mail_sys -d /var/spool/mail -s /sbin/nologin
 chown -R mail_sys:mail_sys /var/spool/mail
-
-# postfix part
-cp -r /etc/postfix /etc/postfix.bak
-cat > /etc/postfix/main.cf << EOF
 ```
 
-```json
+### 4. Postfix Setup
+
+```shell
+# postfix part
+cp -r /etc/postfix /etc/postfix.bak # back-up
+
+cat > /etc/postfix/main.cf << EOF
+{
 mydomain = hepta.asia
 myhostname = mail.hepta.asia
 mydestination = localhost
@@ -129,13 +144,10 @@ tls_preempt_cipherlist = yes
 smtpd_tls_received_header = yes
 policyd-spf_time_limit = 3600
 EOF
-```
+}
 
-```shell
 cat > /etc/postfix/master.cf << EOF
-```
-
-```json
+{
 smtp      inet  n       -       n       -       -       smtpd
 submission inet n       -       n       -       -       smtpd
        -o smtpd_tls_security_level=encrypt
@@ -168,32 +180,27 @@ scache    unix  -       -       n       -       1       scache
 policyd-spf    unix  -       n       n       -       0       spawn
        user=mail_sys argv=/usr/libexec/postfix/policyd-spf
 EOF
-```
+}
 
-```shell
 cat > /etc/postfix/mysql_mailbox_domains.cf << EOF
-```
-
-```json
+{
 user = mail_sys
 password = mail_sys
 hosts = localhost
 dbname = mail_sys
 query = SELECT 1 FROM domains WHERE name='%s'
 EOF
-```
+}
 
-```shell
 cat > /etc/postfix/mysql_mailbox_maps.cf << EOF
-```
-
-```json
+{
 user = mail_sys
 password = mail_sys
 hosts = localhost
 dbname = mail_sys
 query = SELECT email FROM users WHERE email='%s'
 EOF
+}
 ```
 
 ```shell
@@ -202,26 +209,25 @@ systemctl start postfix
 postmap -q hepta.asia mysql:/etc/postfix/mysql_mailbox_domains.cf # should return 1
 postmap -q ceo@hepta.asia mysql:/etc/postfix/mysql_alias_maps.cf # should return ceo@hepta.asia
 systemctl stop postfix # temporarily shut down
-
-# dovecot setup
-cp -r /etc/dovecot /etc/dovecot.bak
-cat > /etc/dovecot/dovecot.conf << EOF
 ```
 
-```json
+### 5. Devocot Setup
+
+```shell
+# dovecot setup
+cp -r /etc/dovecot /etc/dovecot.bak
+
+cat > /etc/dovecot/dovecot.conf << EOF
+{
 protocols = imap lmtp
 dict {
 }
 !include conf.d/*.conf
 !include_try local.conf
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/10-mail.conf << EOF
-```
-
-```json
 namespace inbox {
   inbox = yes
 }
@@ -230,13 +236,9 @@ mbox_write_locks = fcntl
 mail_location = maildir:/var/spool/mail/%d/%n
 mail_privileged_group = mail
 EOF
-```
 
-```shell
 cat > /etc/dovecot/conf.d/15-mailboxes.conf << EOF
-```
-
-```json
+{
 namespace inbox {
   mailbox Drafts {
     auto = create
@@ -252,23 +254,16 @@ namespace inbox {
   }
 }
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/10-auth.conf << EOF
-```
-
-```json
+{
 auth_mechanisms = plain login
 !include auth-sql.conf.ext
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/auth-sql.conf.ext << EOF
-```
-
-```json
 passdb {
   driver = sql
   args = /etc/dovecot/dovecot-sql.conf.ext
@@ -278,38 +273,28 @@ userdb {
   args = uid=mail_sys gid=mail_sys home=/var/spool/mail/%d/%n
 }
 EOF
-```
 
-```shell
 cat > /etc/dovecot/dovecot-sql.conf.ext << EOF
-```
-
-```json
+{
 driver = mysql
 connect = host=localhost dbname=mail_sys user=mail_sys password=mail_sys
 default_pass_scheme = SHA512-CRYPT
 password_query = SELECT email as user, password FROM users WHERE email='%u';
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/10-ssl.conf << EOF
-```
-
-```json
+{
 ssl = required
 ssl_cert = </root/.cert_key/cert.pem
 ssl_key = </root/.cert_key/key.pem
 ssl_protocols = TLSv1.2 TLSv1.1 !TLSv1 !SSLv2 !SSLv3
 ssl_cipher_list = ALL:!MD5:!DES:!ADH:!RC4:!PSD:!SRP:!3DES:!eNULL:!aNULL
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/10-master.conf << EOF
-```
-
-```json
+{
 service imap-login {
   inet_listener imap {
     port = 143
@@ -350,25 +335,23 @@ service auth-worker {
   user = mail_sys
 }
 EOF
-```
+}
 
-```shell
 cat > /etc/dovecot/conf.d/15-lda.conf << EOF
-```
-
-```json
+{
 postmaster_address = postmaster@%d
 
 protocol lda {
 }
 EOF
+}
 ```
+
+### 6. OpenDKIM Setup
 
 ```shell
 cat > /etc/opendkim.conf << EOF
-```
-
-```json
+{
 Syslog yes
 UMask 002
 OversignHeaders From
@@ -378,35 +361,37 @@ KeyFile /etc/opendkim/keys/mail.private
 Selector mail
 RequireSafeKeys no
 EOF
-```
+}
 
-```shell
-# openKDIM setup
 opendkim-genkey -D /etc/opendkim/keys/ -d hepta.asia -s mail && \
 chown -R opendkim:opendkim /etc/opendkim/keys/
-cat >> /etc/postfix/main.cf << EOF
-```
 
-```json
+cat >> /etc/postfix/main.cf << EOF
+{
 milter_protocol = 2
 milter_default_action = accept
 smtpd_milters = inet:127.0.0.1:8891
 non_smtpd_milters = inet:127.0.0.1:8891
 EOF
+}
 ```
+
+### 7. Services Start (postfix, dovecot, opendkim)
 
 ```shell
 systemctl start postfix dovecot opendkim
 systemctl enable postfix dovecot opendkim mariadb # start when booting
 ```
 
-### Point 10 is left
+### 8. Records Setup
 
-```shell
-/
-```
+![image-20210803123100688](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043101.png)
 
-### Point 11
+![image-20210803123123489](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043123.png)
+
+![image-20210803123133095](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043133.png)
+
+### 9. RoundCubeMail Setup
 
 ```shell
 wget https://github.com/roundcube/roundcubemail/releases/download/1.3.0/roundcubemail-1.3.0-complete.tar.gz
@@ -440,11 +425,19 @@ server {
     }
 }
 # :x
+```
 
+### 10. PHP & Apache Setup
+
+```shell
 echo "date.timezone = Asia/Shanghai" >> /etc/php.ini 
 mkdir /var/lib/php/session && \
 chown apache:apache /var/lib/php/session
+```
 
+### 11. Grant RoundCubeMail Through MariaDB
+
+```shell
 # database operations
 mysql -u root -p
 CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
@@ -452,12 +445,14 @@ CREATE DATABASE roundcube;
 GRANT ALL ON roundcube.* TO 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
 FLUSH PRIVILEGES;
 # ctrl + D
-
-# start the services
-systemctl enable nginx php-fpm 
-systemctl start nginx 
-systemctl start php-fpm
-
 ```
 
-### Config RoundCube (no command-lines any more!)
+### 12. Services Start (NGINX, PHP)
+
+```shell
+# start the services
+systemctl enable nginx php-fpm
+systemctl start nginx
+systemctl start php-fpm
+```
+
