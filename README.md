@@ -448,3 +448,11 @@ Go to [this website](mail.hepta.asia) to check whether you can see the Roundcube
 
 ![v2-de3ae4e8fde015b22edfc748357c9d78_720w](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-04-125604.jpg)
 
+
+
+## Trouble Shooting
+
+### Configuration Error
+
+![image-20210804215122717](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-04-135123.png)
+
