@@ -1,62 +1,12 @@
-# Email Server Version 0.8.4
-This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
-
-[TOC]
-
-## Permitted Server
-
-| Owner                           | Hepta Workshop     |
-| ------------------------------- | ------------------ |
-| Holder/Network Decider          | Jiahe LI           |
-| IP Public                       | 81.68.236.207      |
-| IP Private                      | 10.0.4.17          |
-| Password                        | PRIVATE            |
-| Version                         | CentOS 7.6         |
-| E-mail Monopolize               | YES                |
-| Domain Name                     | `hepta.asia`       |
-| Second-level Domain Name        | `mail.hepta.asia`  |
-| SSL Certification & Key Address | `/root/.cert_key/` |
-
-## Overall Construction
-
-The first-hand resource is [this website](https://zhuanlan.zhihu.com/p/28816035).
-
-### Sending Process
-
-![Architecture](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-071352.png)
-
-### Encryption
-
-![Encryption](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-072508.png)
-
-## Shell Script for Manipulation
-
-### 0. Create Certification & Keys
-
-```shell
-cd /root/
-mkdir .cert_key
-cd .cert_key/
-vim cert.pem # then add your certificate here
-vim key.pem # then add your key here
-```
-
-### 1. System Update & Download All Packages
-
-```shell
-# system update
-yum -y update && \
-yum -y install epel-release && \
-yum -y update && \
+# system update & download all packages
+yum -y update
+yum -y install epel-release
+yum -y update
 yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-mbstring php-mysql php-xml postfix pypolicyd-spf tar wget # always enter 'y' to pass the queries
-```
 
-### 2. Back-end Database System Setup
-
-```shell
 # configure MariaDB(MySQL-kind). This database only verifies the domain, user, and alias
 systemctl start mariadb
-mysql_secure_installation # you can set passwd for root, and you can also ignore it. For later questions, use all 'y's to pass the queries.
+mysql_secure_installation # Do not set passwd for MySQL here.
 
 # set-up MariaDB
 mysql -u root # log in MariaDB using user root
@@ -72,26 +22,17 @@ INSERT INTO `mail_sys`.`domains` (`id` ,`name`) VALUES ('1', 'hepta.asia');
 INSERT INTO `mail_sys`.`users` (`id`, `domain_id`, `password` , `email`) VALUES ('1', '1', ENCRYPT('12345678', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'ceo@hepta.asia'),('2', '1', ENCRYPT('password', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'hr@hepta.asia'), ('3', '1', ENCRYPT('11111111', CONCAT('$6$', SUBSTRING(SHA(RAND()), -16))), 'lyon@hepta.asia');
 SELECT * FROM mail_sys.domains;
 SELECT * FROM mail_sys.users;
+exit
 
-```
-
-### 3. User Group Setup
-
-```shell
 # add user group
 groupadd -g 2000 mail_sys
 useradd -g mail_sys -u 2000 mail_sys -d /var/spool/mail -s /sbin/nologin
 chown -R mail_sys:mail_sys /var/spool/mail
-```
 
-### 4. Postfix Setup
-
-```shell
 # postfix part
 cp -r /etc/postfix /etc/postfix.bak # back-up
 
-echo '
-mydomain = hepta.asia
+echo 'mydomain = hepta.asia
 myhostname = mail.hepta.asia
 mydestination = localhost
 alias_maps = hash:/etc/aliases
@@ -188,19 +129,12 @@ hosts = localhost
 dbname = mail_sys
 query = SELECT email FROM users WHERE email='%s'' > /etc/postfix/mysql_mailbox_maps.cf
 
-```
-
-```shell
 # postfix setup
 systemctl start postfix
 postmap -q hepta.asia mysql:/etc/postfix/mysql_mailbox_domains.cf # should return 1
 postmap -q ceo@hepta.asia mysql:/etc/postfix/mysql_mailbox_maps.cf # should return ceo@hepta.asia
 systemctl stop postfix # temporarily shut down
-```
 
-### 5. Devocot Setup
-
-```shell
 # dovecot setup
 cp -r /etc/dovecot /etc/dovecot.bak
 
@@ -254,7 +188,7 @@ echo 'ssl = required
 ssl_cert = </root/.cert_key/cert.pem
 ssl_key = </root/.cert_key/key.pem
 ssl_protocols = TLSv1.2 TLSv1.1 !TLSv1 !SSLv2 !SSLv3
-ssl_cipher_list = ALL:!MD5:!DES:!ADH:!RC4:!PSD:!SRP:!3DES:!eNULL:!aNULL' > /etc/dovecot/conf.d/10-ssl.conf 
+ssl_cipher_list = ALL:!MD5:!DES:!ADH:!RC4:!PSD:!SRP:!3DES:!eNULL:!aNULL' > /etc/dovecot/conf.d/10-ssl.conf
 
 echo 'service imap-login {
   inet_listener imap {
@@ -294,18 +228,13 @@ service auth {
 
 service auth-worker {
   user = mail_sys
-}' > /etc/dovecot/conf.d/10-master.conf 
+}' > /etc/dovecot/conf.d/10-master.conf
 
 echo 'postmaster_address = postmaster@%d
 
 protocol lda {
-}' > /etc/dovecot/conf.d/15-lda.conf 
+}' > /etc/dovecot/conf.d/15-lda.conf
 
-```
-
-### 6. OpenDKIM Setup
-
-```shell
 echo 'Syslog yes
 UMask 002
 OversignHeaders From
@@ -313,7 +242,7 @@ Socket inet:8891@127.0.0.1
 Domain hepta.asia
 KeyFile /etc/opendkim/keys/mail.private
 Selector mail
-RequireSafeKeys no' > /etc/opendkim.conf 
+RequireSafeKeys no' > /etc/opendkim.conf
 
 opendkim-genkey -D /etc/opendkim/keys/ -d hepta.asia -s mail && \
 chown -R opendkim:opendkim /etc/opendkim/keys/
@@ -321,130 +250,9 @@ chown -R opendkim:opendkim /etc/opendkim/keys/
 echo 'milter_protocol = 2
 milter_default_action = accept
 smtpd_milters = inet:127.0.0.1:8891
-non_smtpd_milters = inet:127.0.0.1:8891' >> /etc/postfix/main.cf 
+non_smtpd_milters = inet:127.0.0.1:8891' >> /etc/postfix/main.cf
 
-```
-
-### 7. Services Start (postfix, dovecot, opendkim)
-
-```shell
 systemctl start postfix dovecot opendkim
 systemctl enable postfix dovecot opendkim mariadb # start when booting
-```
 
-### 8. Records Setup
-
-To see the record value for `mail._domainkey`, use this command:
-
-```shell
-cat /etc/opendkim/keys/mail.txt 
-```
-
-You will get
-
-```shell
-ail._domainkey IN      TXT     ( "v=DKIM1; k=rsa; "
-       "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDCagGV9BvNewYiX5Xg8tKhWQQyN4m2XfhpqfZCYdPThwuUqcB6uZgTUwEatEoRt/gRovSG8FWISPTVjbgYyE9Sv4uq4AdlK5+KBLh0R7RtWfx0Cz20QiaoWxRYmz8g7jGvlnaxFaie42+Gkn0OZtcOlxXY6jIIYXNLZ/s5z2JIlQIDAQAB" )  ; ----- DKIM key mail for hepta.asia
-```
-
-So you strip it to
-
-```shell
-v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDCagGV9BvNewYiX5Xg8tKhWQQyN4m2XfhpqfZCYdPThwuUqcB6uZgTUwEatEoRt/gRovSG8FWISPTVjbgYyE9Sv4uq4AdlK5+KBLh0R7RtWfx0Cz20QiaoWxRYmz8g7jGvlnaxFaie42+Gkn0OZtcOlxXY6jIIYXNLZ/s5z2JIlQIDAQA
-```
-
-And form like this:
-
-| Record Type | Record HostName | Record Value                                                 |
-| ----------- | --------------- | ------------------------------------------------------------ |
-| A           | @               | 81.68.236.207                                                |
-| MX          | @               | mail.hepta.asia                                              |
-| A           | mail            | 81.68.236.207                                                |
-| TXT         | @               | v=spf1 mx -all                                               |
-| TXT         | _dmarc          | v=DMARC1; p=reject                                           |
-| TXT         | mail._domainkey | v=DKIM1; k=rsa; <br/>p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBG8b8e8+K5VPYDMbMiwXjZTFWIUWn1/pUD09Qc3FxtmCqBXqCD9833cWz1yeI1IHX9zvAIIE38o9TjvUn2kk/GMypn4NKo/EiF5hsLYPpj24OvR1u87ILgSco0WKe43UNWeoKlW9kmSQBFE49nFsJlZ3Kw0PFkBRSvQzc5HKwDQIDAQAB |
-|             |                 |                                                              |
-
-![image-20210803123133095](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043133.png)
-
-### 9. RoundCubeMail Setup
-
-```shell
-wget https://github.com/roundcube/roundcubemail/releases/download/1.3.0/roundcubemail-1.3.0-complete.tar.gz
-tar -xf roundcubemail-1.3.0-complete.tar.gz && \
-mv roundcubemail-1.3.0 /usr/share/roundcube && \
-chown -R apache:apache /usr/share/roundcube
-```
-
-### 10. NGINX Setup
-
-```shell
-echo 'server {
-    listen       80;
-    server_name  mail.hepta.asia;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen       443 ssl http2;
-    server_name  mail.hepta.asia;
-    ssl_certificate "/root/.cert_key/cert.pem";
-    ssl_certificate_key "/root/.cert_key/key.pem";
-    add_header Strict-Transport-Security "max-age=15552000; includeSubDomains";
-    location / {
-     root         /usr/share/roundcube;
-     index        index.php;     
-    }   
-    location ~ .php$ {
-        root         /usr/share/roundcube;
-        fastcgi_pass   127.0.0.1:9000;
-        fastcgi_index  index.php;
-        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
-        include        fastcgi_params;
-    }
-}' > /etc/nginx/conf.d/mail.conf
-
-```
-
-### 11. PHP & Apache Setup
-
-```shell
-echo "date.timezone = Asia/Shanghai" >> /etc/php.ini 
-mkdir /var/lib/php/session && \
-chown apache:apache /var/lib/php/session
-```
-
-### 12. Grant RoundCubeMail Through MariaDB
-
-```shell
-# database operations
-mysql -u root -p
-
-CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
-CREATE DATABASE roundcube;
-GRANT ALL ON roundcube.* TO 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
-FLUSH PRIVILEGES;
-# ctrl + D
-```
-
-### 13. Services Start (NGINX, PHP)
-
-```shell
-# start the services (except MariaDB)
-systemctl enable nginx php-fpm
-systemctl start nginx php-fpm
-```
-
-### 14. Restart All Services
-
-```shell
-nginx -s reload
-systemctl restart postfix dovecot opendkim nginx php-fpm
-```
-
-### 15. Unit-Test
-
-Go to [this website](mail.hepta.asia) to check whether you can see the Roundcube Webmail Installer.
-
-![v2-de3ae4e8fde015b22edfc748357c9d78_720w](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-04-125604.jpg)
-
+# now turn to Tencent Cloud to configure the domain-name records
