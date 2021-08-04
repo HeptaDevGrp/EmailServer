@@ -1,4 +1,4 @@
-# Email Server Version 0.1.0
+# Email Server Version 0.8.4
 This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 
 [TOC]
@@ -8,16 +8,26 @@ This is the repo for building Email Server on CentOS 7.6 for our Hepta Workshop.
 | Owner                           | Hepta Workshop     |
 | ------------------------------- | ------------------ |
 | Holder/Network Decider          | Jiahe LI           |
-| IP Public                       | PRIVATE            |
+| IP Public                       | 81.68.236.207      |
 | IP Private                      | 10.0.4.17          |
 | Password                        | PRIVATE            |
 | Version                         | CentOS 7.6         |
 | E-mail Monopolize               | YES                |
 | Domain Name                     | `hepta.asia`       |
+| Second-level Domain Name        | `mail.hepta.asia`  |
 | SSL Certification & Key Address | `/root/.cert_key/` |
-|                                 |                    |
 
+## Overall Construction
 
+The first-hand resource is [this website](https://zhuanlan.zhihu.com/p/28816035).
+
+### Sending Process
+
+![Architecture](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-071352.png)
+
+### Encryption
+
+![Encryption](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-072508.png)
 
 ## Shell Script for Manipulation
 
@@ -389,6 +399,11 @@ wget https://github.com/roundcube/roundcubemail/releases/download/1.3.0/roundcub
 tar -xf roundcubemail-1.3.0-complete.tar.gz && \
 mv roundcubemail-1.3.0 /usr/share/roundcube && \
 chown -R apache:apache /usr/share/roundcube
+```
+
+### 10. NGINX Setup
+
+```shell
 vi /etc/nginx/conf.d/mail.conf
 
 server {
@@ -418,7 +433,7 @@ server {
 # :x
 ```
 
-### 10. PHP & Apache Setup
+### 11. PHP & Apache Setup
 
 ```shell
 echo "date.timezone = Asia/Shanghai" >> /etc/php.ini 
@@ -426,7 +441,7 @@ mkdir /var/lib/php/session && \
 chown apache:apache /var/lib/php/session
 ```
 
-### 11. Grant RoundCubeMail Through MariaDB
+### 12. Grant RoundCubeMail Through MariaDB
 
 ```shell
 # database operations
@@ -438,7 +453,7 @@ FLUSH PRIVILEGES;
 # ctrl + D
 ```
 
-### 12. Services Start (NGINX, PHP)
+### 13. Services Start (NGINX, PHP)
 
 ```shell
 # start the services (except MariaDB)
@@ -446,7 +461,7 @@ systemctl enable nginx php-fpm
 systemctl start nginx php-fpm
 ```
 
-### 13. Restart All Services
+### 14. Restart All Services
 
 ```shell
 nginx -s reload
