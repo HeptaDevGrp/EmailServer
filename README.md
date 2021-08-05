@@ -45,10 +45,11 @@ vim key.pem # then add your key here
 
 ```shell
 # system update
-yum -y update && \
-yum -y install epel-release && \
-yum -y update && \
-yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-mbstring php-mysql php-xml postfix pypolicyd-spf tar wget # always enter 'y' to pass the queries
+yum -y update
+yum -y install epel-release
+yum -y update
+# totally 11 items. always enter 'y' to pass the queries
+yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-mbstring php-mysql php-xml postfix pypolicyd-spf tar wget
 ```
 
 ### 2. Back-end Database System Setup
@@ -56,7 +57,8 @@ yum -y install dovecot dovecot-mysql mariadb-server nginx opendkim php-fpm php-m
 ```shell
 # configure MariaDB(MySQL-kind). This database only verifies the domain, user, and alias
 systemctl start mariadb
-mysql_secure_installation # you can set passwd for root, and you can also ignore it. For later questions, use all 'y's to pass the queries.
+mysql_secure_installation 
+# you should not set a password to make login easier
 
 # set-up MariaDB
 mysql -u root # log in MariaDB using user root
@@ -88,9 +90,9 @@ chown -R mail_sys:mail_sys /var/spool/mail
 
 ```shell
 # postfix part
-cp -r /etc/postfix /etc/postfix.bak # back-up
+cp -r /etc/postfix /etc/postfix.bak
 
-echo '
+echo "
 mydomain = hepta.asia
 myhostname = mail.hepta.asia
 mydestination = localhost
@@ -142,9 +144,9 @@ smtp_tls_mandatory_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, 
 smtp_tls_exclude_ciphers = MD5, DES, ADH, RC4, PSD, SRP, 3DES, eNULL, aNULL
 tls_preempt_cipherlist = yes
 smtpd_tls_received_header = yes
-policyd-spf_time_limit = 3600' > /etc/postfix/main.cf
+policyd-spf_time_limit = 3600" > /etc/postfix/main.cf
 
-echo 'smtp      inet  n       -       n       -       -       smtpd
+echo "smtp      inet  n       -       n       -       -       smtpd
 submission inet n       -       n       -       -       smtpd
        -o smtpd_tls_security_level=encrypt
 smtps     inet  n       -       n       -       -       smtpd
@@ -174,19 +176,19 @@ lmtp      unix  -       -       n       -       -       lmtp
 anvil     unix  -       -       n       -       1       anvil
 scache    unix  -       -       n       -       1       scache
 policyd-spf    unix  -       n       n       -       0       spawn
-       user=mail_sys argv=/usr/libexec/postfix/policyd-spf' > /etc/postfix/master.cf
+       user=mail_sys argv=/usr/libexec/postfix/policyd-spf" > /etc/postfix/master.cf
 
-echo 'user = mail_sys
+echo "user = mail_sys
 password = mail_sys
 hosts = localhost
 dbname = mail_sys
-query = SELECT 1 FROM domains WHERE name='%s'' > /etc/postfix/mysql_mailbox_domains.cf
+query = SELECT 1 FROM domains WHERE name='%s'" > /etc/postfix/mysql_mailbox_domains.cf
 
-echo 'user = mail_sys
+echo "user = mail_sys
 password = mail_sys
 hosts = localhost
 dbname = mail_sys
-query = SELECT email FROM users WHERE email='%s'' > /etc/postfix/mysql_mailbox_maps.cf
+query = SELECT email FROM users WHERE email='%s'" > /etc/postfix/mysql_mailbox_maps.cf
 
 ```
 
@@ -210,15 +212,15 @@ dict {
 !include conf.d/*.conf
 !include_try local.conf' > /etc/dovecot/dovecot.conf
 
-echo 'namespace inbox {
+echo "namespace inbox {
   inbox = yes
 }
 first_valid_uid = 1000
 mbox_write_locks = fcntl
 mail_location = maildir:/var/spool/mail/%d/%n
-mail_privileged_group = mail' > /etc/dovecot/conf.d/10-mail.conf
+mail_privileged_group = mail" > /etc/dovecot/conf.d/10-mail.conf
 
-echo 'namespace inbox {
+echo "namespace inbox {
   mailbox Drafts {
     auto = create
     special_use = \Drafts
@@ -231,24 +233,24 @@ echo 'namespace inbox {
     auto = create
     special_use = \Sent
   }
-}' > /etc/dovecot/conf.d/15-mailboxes.conf
+}" > /etc/dovecot/conf.d/15-mailboxes.conf
 
 echo 'auth_mechanisms = plain login
 !include auth-sql.conf.ext' > /etc/dovecot/conf.d/10-auth.conf
 
-echo 'passdb {
+echo "passdb {
   driver = sql
   args = /etc/dovecot/dovecot-sql.conf.ext
 }
 userdb {
   driver = static
   args = uid=mail_sys gid=mail_sys home=/var/spool/mail/%d/%n
-}' > /etc/dovecot/conf.d/auth-sql.conf.ext
+}" > /etc/dovecot/conf.d/auth-sql.conf.ext
 
-echo 'driver = mysql
+echo "driver = mysql
 connect = host=localhost dbname=mail_sys user=mail_sys password=mail_sys
 default_pass_scheme = SHA512-CRYPT
-password_query = SELECT email as user, password FROM users WHERE email='%u';' > /etc/dovecot/dovecot-sql.conf.ext
+password_query = SELECT email as user, password FROM users WHERE email='%u';" > /etc/dovecot/dovecot-sql.conf.ext
 
 echo 'ssl = required
 ssl_cert = </root/.cert_key/cert.pem
@@ -256,7 +258,7 @@ ssl_key = </root/.cert_key/key.pem
 ssl_protocols = TLSv1.2 TLSv1.1 !TLSv1 !SSLv2 !SSLv3
 ssl_cipher_list = ALL:!MD5:!DES:!ADH:!RC4:!PSD:!SRP:!3DES:!eNULL:!aNULL' > /etc/dovecot/conf.d/10-ssl.conf 
 
-echo 'service imap-login {
+echo "service imap-login {
   inet_listener imap {
     port = 143
   }
@@ -294,7 +296,7 @@ service auth {
 
 service auth-worker {
   user = mail_sys
-}' > /etc/dovecot/conf.d/10-master.conf 
+}" > /etc/dovecot/conf.d/10-master.conf 
 
 echo 'postmaster_address = postmaster@%d
 
@@ -315,7 +317,7 @@ KeyFile /etc/opendkim/keys/mail.private
 Selector mail
 RequireSafeKeys no' > /etc/opendkim.conf 
 
-opendkim-genkey -D /etc/opendkim/keys/ -d hepta.asia -s mail && \
+opendkim-genkey -D /etc/opendkim/keys/ -d hepta.asia -s mail
 chown -R opendkim:opendkim /etc/opendkim/keys/
 
 echo 'milter_protocol = 2
@@ -343,14 +345,13 @@ cat /etc/opendkim/keys/mail.txt
 You will get
 
 ```shell
-ail._domainkey IN      TXT     ( "v=DKIM1; k=rsa; "
-       "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDCagGV9BvNewYiX5Xg8tKhWQQyN4m2XfhpqfZCYdPThwuUqcB6uZgTUwEatEoRt/gRovSG8FWISPTVjbgYyE9Sv4uq4AdlK5+KBLh0R7RtWfx0Cz20QiaoWxRYmz8g7jGvlnaxFaie42+Gkn0OZtcOlxXY6jIIYXNLZ/s5z2JIlQIDAQAB" )  ; ----- DKIM key mail for hepta.asia
+mail._domainkey	IN	TXT	( "v=DKIM1; k=rsa;" "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDTiFK8pJzfBE9GnnFIhcYppMtCl7lYbCJfi2/5msP98mk76qzoFb52piVBfS3cEUjvUuqZDwuz08VJP1evPoBZ+SFUP+sU4QsTxSWtJxV667kLjIQ1QN9m9/V9o6NZpD023ZIZg25fixjH6+ABtMTTEeijmJkL4XoKqOGk9GcSBQIDAQAB" )  ; ----- DKIM key mail for hepta.asia
 ```
 
 So you strip it to
 
 ```shell
-v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDCagGV9BvNewYiX5Xg8tKhWQQyN4m2XfhpqfZCYdPThwuUqcB6uZgTUwEatEoRt/gRovSG8FWISPTVjbgYyE9Sv4uq4AdlK5+KBLh0R7RtWfx0Cz20QiaoWxRYmz8g7jGvlnaxFaie42+Gkn0OZtcOlxXY6jIIYXNLZ/s5z2JIlQIDAQA
+v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDTiFK8pJzfBE9GnnFIhcYppMtCl7lYbCJfi2/5msP98mk76qzoFb52piVBfS3cEUjvUuqZDwuz08VJP1evPoBZ+SFUP+sU4QsTxSWtJxV667kLjIQ1QN9m9/V9o6NZpD023ZIZg25fixjH6+ABtMTTEeijmJkL4XoKqOGk9GcSBQIDAQAB
 ```
 
 And form like this:
@@ -362,8 +363,7 @@ And form like this:
 | A           | mail            | 81.68.236.207                                                |
 | TXT         | @               | v=spf1 mx -all                                               |
 | TXT         | _dmarc          | v=DMARC1; p=reject                                           |
-| TXT         | mail._domainkey | v=DKIM1; k=rsa; <br/>p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBG8b8e8+K5VPYDMbMiwXjZTFWIUWn1/pUD09Qc3FxtmCqBXqCD9833cWz1yeI1IHX9zvAIIE38o9TjvUn2kk/GMypn4NKo/EiF5hsLYPpj24OvR1u87ILgSco0WKe43UNWeoKlW9kmSQBFE49nFsJlZ3Kw0PFkBRSvQzc5HKwDQIDAQAB |
-|             |                 |                                                              |
+| TXT         | mail._domainkey | v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDTiFK8pJzfBE9GnnFIhcYppMtCl7lYbCJfi2/5msP98mk76qzoFb52piVBfS3cEUjvUuqZDwuz08VJP1evPoBZ+SFUP+sU4QsTxSWtJxV667kLjIQ1QN9m9/V9o6NZpD023ZIZg25fixjH6+ABtMTTEeijmJkL4XoKqOGk9GcSBQIDAQAB |
 
 ![image-20210803123133095](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-03-043133.png)
 
@@ -371,15 +371,15 @@ And form like this:
 
 ```shell
 wget https://github.com/roundcube/roundcubemail/releases/download/1.3.0/roundcubemail-1.3.0-complete.tar.gz
-tar -xf roundcubemail-1.3.0-complete.tar.gz && \
-mv roundcubemail-1.3.0 /usr/share/roundcube && \
+tar -xf roundcubemail-1.3.0-complete.tar.gz
+mv roundcubemail-1.3.0 /usr/share/roundcube
 chown -R apache:apache /usr/share/roundcube
 ```
 
 ### 10. NGINX Setup
 
 ```shell
-echo 'server {
+echo '''server {
     listen       80;
     server_name  mail.hepta.asia;
     return 301 https://$server_name$request_uri;
@@ -402,7 +402,7 @@ server {
         fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
         include        fastcgi_params;
     }
-}' > /etc/nginx/conf.d/mail.conf
+}''' > /etc/nginx/conf.d/mail.conf
 
 ```
 
@@ -410,7 +410,7 @@ server {
 
 ```shell
 echo "date.timezone = Asia/Shanghai" >> /etc/php.ini 
-mkdir /var/lib/php/session && \
+mkdir /var/lib/php/session
 chown apache:apache /var/lib/php/session
 ```
 
@@ -418,7 +418,7 @@ chown apache:apache /var/lib/php/session
 
 ```shell
 # database operations
-mysql -u root -p
+mysql -u root
 
 CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'roundcube';
 CREATE DATABASE roundcube;
@@ -438,15 +438,27 @@ systemctl start nginx php-fpm
 ### 14. Restart All Services
 
 ```shell
-nginx -s reload
-systemctl restart postfix dovecot opendkim nginx php-fpm
+nginx -s reload # self-added
+systemctl restart postfix dovecot opendkim nginx php-fpm # self-added
 ```
 
 ### 15. Unit-Test
 
-Go to [this website](mail.hepta.asia) to check whether you can see the Roundcube Webmail Installer.
+Go to [this website](mail.hepta.asia/installer) to check whether you can see the Roundcube Webmail Installer.
 
 ![v2-de3ae4e8fde015b22edfc748357c9d78_720w](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-04-125604.jpg)
+
+![image-20210805170731592](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-05-090732.png)
+
+![image-20210805170956439](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-05-090956.png)
+
+![image-20210805171059814](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-05-091100.png)
+
+![image-20210805171134888](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-05-091135.png)
+
+![image-20210805171151552](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-05-091151.png)
+
+
 
 
 
@@ -455,4 +467,16 @@ Go to [this website](mail.hepta.asia) to check whether you can see the Roundcube
 ### Configuration Error
 
 ![image-20210804215122717](http://jacklovespictures.oss-cn-beijing.aliyuncs.com/2021-08-04-135123.png)
+
+```shell
+You should use mail.hepta.asia/installer instead.
+```
+
+
+
+
+
+
+
+
 
