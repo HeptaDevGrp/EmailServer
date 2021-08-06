@@ -472,9 +472,37 @@ Go to [this website](mail.hepta.asia/installer) to check whether you can see the
 You should use mail.hepta.asia/installer instead.
 ```
 
+### SMTP Error
 
+cannot pass through SMTP test, sending email failing
 
+```
 
+```
+
+### IMAP Error
+
+1. cannot find the driver mysql
+
+   ```
+   
+   ```
+
+2. cannot connect to the userdb to get the user information ( error: userunknow ): use doveadm users '%email'
+
+   ```
+   
+   ```
+
+3. mysql databases connection fails
+
+   ![](.\graphs\error.png)
+
+   ```
+   
+   ```
+
+4. 
 
 
 
